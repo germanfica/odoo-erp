@@ -17,7 +17,7 @@ pipeline {
 
     environment {
         GITHUB_SSH_CREDENTIALS_ID = 'a1144af3-f687-4c8e-9963-5acdee26090a' // Reemplaza con el ID de tus credenciales SSH de tipo Username with private key
-        SSH_KEY=credentials('adcc6d4c-e160-4bc5-ad33-6911e6fc152f') // Secret kind: SSH Username with private key
+        SSH_KEY=credentials('c1e2471b-7e6a-4db0-8d82-752af1c55525') // Secret kind: SSH Username with private key
         REPO_URL = 'git@github.com:germanfica/odoo-erp.git'
         PROJECT_NAME = 'odoo'
         APP_IMAGE_NAME = 'odoo'
@@ -26,8 +26,8 @@ pipeline {
         PLAYBOOK_PATH = '/opt/ansible-infra/playbooks/deploy-docker-app.yml'
         // Nota: WORKSPACE es una variable de Jenkins, no una variable de Groovy. No usar comillas simples en TEMPLATE_SRC porque Groovy no hace interpolación en ellas.
         ODOO_TEMPLATE_SRC = "${WORKSPACE}/templates/docker-compose.odoo.yml.j2"
-        TARGET_HOSTS = 'localhost'
-        LIMIT_HOSTS = 'localhost'
+        TARGET_HOSTS = 'odoo'
+        LIMIT_HOSTS = 'odoo'
         USE_BECOME = 'true'
         POSTGRES_VERSION = "16"
     }
