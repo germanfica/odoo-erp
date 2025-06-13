@@ -1,0 +1,6 @@
+# vault.yml (sin encriptar)
+POSTGRES_DB: "odoo"
+POSTGRES_USER: "odoo"
+POSTGRES_PASSWORD: "strong_db_password"
+
+ODOO_PORT: "8069"
