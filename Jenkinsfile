@@ -29,7 +29,7 @@ pipeline {
         TARGET_HOSTS = 'localhost'
         LIMIT_HOSTS = 'localhost'
         USE_BECOME = 'true'
-        POSTGRES_VERSION: "16"
+        POSTGRES_VERSION = "16"
     }
 
     options {
@@ -101,7 +101,7 @@ pipeline {
                     sh 'ls -la'
                     withCredentials([file(credentialsId: 'ansible-vault-password', variable: 'VAULT_PASS_FILE')]) {
                         withEnv(["BUILD_TAG=${buildTag}"]) {
-                            sh 'ansible-playbook -i $INVENTORY_PATH --private-key=$SSH_KEY --vault-password-file="$VAULT_PASS_FILE" $PLAYBOOK_PATH --limit $LIMIT_HOSTS --extra-vars "APP_VERSION=$APP_IMAGE_TAG APP_IMAGE_NAME=$APP_IMAGE_NAME APP_NAME=$PROJECT_NAME WORKSPACE=$WORKSPACE TEMPLATE_SRC=$ODOO_TEMPLATE_SRC USE_TAR=false TARGET_HOSTS=$TARGET_HOSTS USE_BECOME=$USE_BECOME"'
+                            sh 'ansible-playbook -i $INVENTORY_PATH --private-key=$SSH_KEY --vault-password-file="$VAULT_PASS_FILE" $PLAYBOOK_PATH --limit $LIMIT_HOSTS --extra-vars "APP_VERSION=$APP_IMAGE_TAG APP_IMAGE_NAME=$APP_IMAGE_NAME APP_NAME=$PROJECT_NAME WORKSPACE=$WORKSPACE TEMPLATE_SRC=$ODOO_TEMPLATE_SRC POSTGRES_VERSION=$POSTGRES_VERSION USE_TAR=false TARGET_HOSTS=$TARGET_HOSTS USE_BECOME=$USE_BECOME"'
                         }
                     }
                 }
