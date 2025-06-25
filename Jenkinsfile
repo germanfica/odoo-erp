@@ -24,6 +24,7 @@ pipeline {
         APP_IMAGE_TAG = '18'
         INVENTORY_PATH = '/opt/ansible-infra/inventories/production/applications/odoo/inventory.yml'
         PLAYBOOK_PATH = '/opt/ansible-infra/playbooks/deploy-docker-app.yml'
+        COPY_CONFIG_PLAYBOOK   = '/opt/ansible-infra/playbooks/odoo-copy-config.yml'
         // Nota: WORKSPACE es una variable de Jenkins, no una variable de Groovy. No usar comillas simples en TEMPLATE_SRC porque Groovy no hace interpolación en ellas.
         ODOO_TEMPLATE_SRC = "${WORKSPACE}/templates/docker-compose.odoo.yml.j2"
         TARGET_HOSTS = 'odoo'
@@ -92,6 +93,21 @@ pipeline {
                           gitTool: 'Default',
                           userRemoteConfigs: [[url: env.REPO_URL, credentialsId: env.GITHUB_SSH_CREDENTIALS_ID]]])
                 echo 'Checkout completed. Proceeding to the next stage.'
+            }
+        }
+
+        stage('Copy Odoo Configuration File') {
+            steps {
+                script {
+                    withCredentials([file(credentialsId: 'ansible-vault-password', variable: 'VAULT_PASS_FILE')]) {
+                        withEnv([
+                            "BUILD_TAG=${buildTag}",
+                            // hereda APP_NAME, WORKSPACE, etc. si ya los defines en el pipeline
+                        ]) {
+                            sh 'ansible-playbook -i $INVENTORY_PATH --private-key=$SSH_KEY --vault-password-file="$VAULT_PASS_FILE" $COPY_CONFIG_PLAYBOOK --limit $LIMIT_HOSTS --extra-vars "APP_VERSION=$APP_IMAGE_TAG APP_IMAGE_NAME=$APP_IMAGE_NAME APP_NAME=$PROJECT_NAME WORKSPACE=$WORKSPACE TEMPLATE_SRC=$ODOO_TEMPLATE_SRC POSTGRES_VERSION=$POSTGRES_VERSION USE_TAR=false TARGET_HOSTS=$TARGET_HOSTS USE_BECOME=$USE_BECOME"'
+                        }
+                    }
+                }
             }
         }
 
