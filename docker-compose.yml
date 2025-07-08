@@ -13,7 +13,7 @@ services:
       - net
 
   odoo:
-    image: odoo:18
+    build: .
     container_name: odoo
     restart: unless-stopped
     depends_on:
@@ -34,7 +34,7 @@ services:
 networks:
   net:
     driver: bridge
-    external: true
+    # external: true
 
 volumes:
   odoo_db_data: {}
