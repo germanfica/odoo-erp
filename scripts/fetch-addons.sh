@@ -41,7 +41,7 @@ for module in \
     account_asset_management account_budget_oca \
     base_view_inheritance_extension \
     date_range report_xlsx report_xlsx_helper \
-    web_dark_mode; do
+    web_dark_mode web_responsive; do
     if ! find "$root" -mindepth 2 -maxdepth 2 -type d -name "$module" -print -quit | grep -q .; then
         echo "ERROR: modulo esperado ausente: $module" >&2
         exit 1
