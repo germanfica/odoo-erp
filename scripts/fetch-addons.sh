@@ -1,3 +1,4 @@
+
 #!/bin/sh
 set -eu
 
@@ -28,6 +29,7 @@ OCA/account-reconcile|account-reconcile
 OCA/account-financial-tools|account-financial-tools
 OCA/account-budgeting|account-budgeting
 OCA/server-ux|server-ux
+OCA/server-tools|server-tools
 OCA/reporting-engine|reporting-engine
 REPOS
 
@@ -36,6 +38,7 @@ for module in \
     l10n_ar_afipws l10n_ar_afipws_fe \
     account_financial_report account_reconcile_oca \
     account_asset_management account_budget_oca \
+    base_view_inheritance_extension \
     date_range report_xlsx report_xlsx_helper; do
     if ! find "$root" -mindepth 2 -maxdepth 2 -type d -name "$module" -print -quit | grep -q .; then
         echo "ERROR: modulo esperado ausente: $module" >&2
