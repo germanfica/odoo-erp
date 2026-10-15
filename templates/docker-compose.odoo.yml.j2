@@ -1,3 +1,4 @@
+
 services:
   odoo-db:
     image: postgres:{{ POSTGRES_VERSION }}
@@ -5,8 +6,8 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_DB: postgres
-      POSTGRES_USER: {{ POSTGRES_USER }}
-      POSTGRES_PASSWORD: "odoo"
+      POSTGRES_USER: {{ POSTGRES_USER | to_json }}
+      POSTGRES_PASSWORD: {{ POSTGRES_PASSWORD | to_json }}
     volumes:
       - odoo_db_data:/var/lib/postgresql/data
     networks:
@@ -23,8 +24,8 @@ services:
       - "{{ ODOO_PORT }}:8069"
     environment:
       HOST: odoo-db
-      USER: {{ POSTGRES_USER }}
-      PASSWORD: "odoo"
+      USER: {{ POSTGRES_USER | to_json }}
+      PASSWORD: {{ POSTGRES_PASSWORD | to_json }}
     volumes:
       - odoo_web_data:/var/lib/odoo
       - ./config/odoo.conf:/etc/odoo/odoo.conf:ro
