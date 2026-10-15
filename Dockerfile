@@ -7,7 +7,7 @@ USER root
 
 # Copia los archivos de Odoo Enterprise al contenedor
 #COPY enterprise /mnt/enterprise
-COPY addons /mnt/extra-addons
+#COPY addons /mnt/extra-addons
 
 # Dependencias de compilacion requeridas por M2Crypto/pyafipws.
 RUN apt-get update && apt-get install -y --no-install-recommends \
