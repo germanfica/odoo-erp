@@ -31,6 +31,7 @@ OCA/account-budgeting|account-budgeting
 OCA/server-ux|server-ux
 OCA/server-tools|server-tools
 OCA/reporting-engine|reporting-engine
+OCA/web|web
 REPOS
 
 # Verificar modulos indispensables para los flujos de prueba descritos en README.
@@ -39,7 +40,8 @@ for module in \
     account_financial_report account_reconcile_oca \
     account_asset_management account_budget_oca \
     base_view_inheritance_extension \
-    date_range report_xlsx report_xlsx_helper; do
+    date_range report_xlsx report_xlsx_helper \
+    web_dark_mode; do
     if ! find "$root" -mindepth 2 -maxdepth 2 -type d -name "$module" -print -quit | grep -q .; then
         echo "ERROR: modulo esperado ausente: $module" >&2
         exit 1
