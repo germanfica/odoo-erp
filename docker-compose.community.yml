@@ -1,3 +1,4 @@
+# Variante local para una red Docker 'net' ya creada (p. ej. Nginx Proxy Manager).
 services:
   odoo-db:
     image: postgres:16
@@ -13,7 +14,8 @@ services:
       - net
 
   odoo:
-    image: odoo:18
+    build: .
+    image: odoo-community-argentina:18-local
     container_name: odoo
     restart: unless-stopped
     depends_on:
@@ -27,15 +29,15 @@ services:
       PASSWORD: odoo
     volumes:
       - odoo_web_data:/var/lib/odoo
-      - ./config/odoo.conf:/etc/odoo/odoo.conf
-      - ./addons:/mnt/extra-addons
+      - ./config/odoo.conf:/etc/odoo/odoo.conf:ro
+      - ./addons:/mnt/extra-addons:ro
     networks:
       - net
 
 networks:
   net:
-    driver: bridge
     external: true
+    name: net
 
 volumes:
   odoo_db_data: {}

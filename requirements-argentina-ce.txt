@@ -1,0 +1,8 @@
+# Fuentes: ingadhoc/odoo-argentina-ce, rama 18.0, requirements.txt.
+# Incluidas para que l10n_ar_afipws y l10n_ar_afipws_fe puedan instalarse.
+# Versiones/transitivas deben validarse para cada build antes de facturar en ARCA.
+pyOpenSSL
+M2Crypto
+httplib2>=0.7
+pysimplesoap~=1.8.22
+git+https://github.com/filoquin/pyafipws.git@py3k

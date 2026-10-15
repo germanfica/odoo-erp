@@ -1,0 +1,63 @@
+---
+# Jenkins invoca este playbook despues de odoo-copy-config.yml.
+# Docker y salida a GitHub/PyPI deben funcionar en el host de destino.
+- name: Build custom Odoo 18 image from public addon repositories
+  hosts: "{{ TARGET_HOSTS | default('odoo') }}"
+  gather_facts: false
+  become: "{{ USE_BECOME | default(true) | bool }}"
+  vars:
+    odoo_build_context: /opt/odoo-image-build
+    odoo_image_name: "{{ APP_IMAGE_NAME | default('odoo-community-argentina') }}"
+    odoo_image_version: "{{ APP_VERSION | default('18-local') }}"
+    odoo_refresh: "{{ ADDONS_REFRESH | default('0') }}"
+
+  tasks:
+    - name: Create image build context on Odoo host
+      ansible.builtin.file:
+        path: "{{ odoo_build_context }}/scripts"
+        state: directory
+        owner: root
+        group: root
+        mode: '0755'
+
+    - name: Copy Dockerfile
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../Dockerfile"
+        dest: "{{ odoo_build_context }}/Dockerfile"
+        owner: root
+        group: root
+        mode: '0644'
+
+    - name: Copy Argentina Python requirements
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../requirements-argentina-ce.txt"
+        dest: "{{ odoo_build_context }}/requirements-argentina-ce.txt"
+        owner: root
+        group: root
+        mode: '0644'
+
+    - name: Copy addon download script
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../scripts/fetch-addons.sh"
+        dest: "{{ odoo_build_context }}/scripts/fetch-addons.sh"
+        owner: root
+        group: root
+        mode: '0755'
+
+    - name: Build updated Odoo image locally on Odoo host
+      ansible.builtin.command:
+        argv:
+          - docker
+          - build
+          - --pull
+          - --build-arg
+          - "ADDONS_REFRESH={{ odoo_refresh }}"
+          - --tag
+          - "{{ odoo_image_name }}:{{ odoo_image_version }}"
+          - "{{ odoo_build_context }}"
+      register: odoo_docker_build
+      changed_when: true
+
+    - name: Show image tag
+      ansible.builtin.debug:
+        msg: "Built {{ odoo_image_name }}:{{ odoo_image_version }} on {{ inventory_hostname }}"

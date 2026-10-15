@@ -20,8 +20,8 @@ pipeline {
         SSH_KEY=credentials('c1e2471b-7e6a-4db0-8d82-752af1c55525') // Secret kind: SSH Username with private key
         REPO_URL = 'git@github.com:germanfica/odoo-erp.git'
         PROJECT_NAME = 'odoo'
-        APP_IMAGE_NAME = 'odoo'
-        APP_IMAGE_TAG = '18'
+        APP_IMAGE_NAME = 'odoo-community-argentina'
+        APP_IMAGE_TAG = "18.${BUILD_NUMBER}"
         INVENTORY_PATH = '/opt/ansible-infra/inventories/production/applications/odoo/inventory.yml'
         PLAYBOOK_PATH = '/opt/ansible-infra/playbooks/deploy-docker-app.yml'
         COPY_CONFIG_PLAYBOOK   = '/opt/ansible-infra/playbooks/odoo-copy-config.yml'
@@ -107,6 +107,23 @@ pipeline {
                             sh 'ansible-playbook -i $INVENTORY_PATH --private-key=$SSH_KEY --vault-password-file="$VAULT_PASS_FILE" $COPY_CONFIG_PLAYBOOK --limit $LIMIT_HOSTS --extra-vars "APP_VERSION=$APP_IMAGE_TAG APP_IMAGE_NAME=$APP_IMAGE_NAME APP_NAME=$PROJECT_NAME WORKSPACE=$WORKSPACE TEMPLATE_SRC=$ODOO_TEMPLATE_SRC POSTGRES_VERSION=$POSTGRES_VERSION USE_TAR=false TARGET_HOSTS=$TARGET_HOSTS USE_BECOME=$USE_BECOME"'
                         }
                     }
+                }
+            }
+        }
+
+        stage('Build Odoo Community 18 + addons (remote)') {
+            steps {
+                // Docker build corre en el host Odoo a traves de Ansible.
+                // No se clonan addons dentro del repo ni del workspace Jenkins.
+                withCredentials([file(credentialsId: 'ansible-vault-password', variable: 'VAULT_PASS_FILE')]) {
+                    sh '''
+                        ansible-playbook -i "$INVENTORY_PATH" \
+                          --private-key="$SSH_KEY" \
+                          --vault-password-file="$VAULT_PASS_FILE" \
+                          playbooks/build-odoo-image.yml \
+                          --limit "$LIMIT_HOSTS" \
+                          --extra-vars "APP_IMAGE_NAME=$APP_IMAGE_NAME APP_VERSION=$APP_IMAGE_TAG TARGET_HOSTS=$TARGET_HOSTS USE_BECOME=$USE_BECOME ADDONS_REFRESH=$BUILD_NUMBER"
+                    '''
                 }
             }
         }
