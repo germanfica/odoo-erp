@@ -177,3 +177,82 @@ func TestFetchDryRunDoesNotWrite(t *testing.T) {
 		t.Fatal("invalid lock accepted")
 	}
 }
+
+// GitHub archives can start with a PAX global header before the repository
+// directory. This must not be mistaken for the archive root.
+func TestGitHubPAXGlobalHeaderBeforeRoot(t *testing.T) {
+	root := t.TempDir()
+	archivePath := filepath.Join(root, "github-pax.tar.gz")
+	file, err := os.Create(archivePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	gzipWriter := gzip.NewWriter(file)
+	tarWriter := tar.NewWriter(gzipWriter)
+	globalHeader := tar.Header{
+		Name:       "pax_global_header",
+		Typeflag:   tar.TypeXGlobalHeader,
+		PAXRecords: map[string]string{"comment": "GitHub archive metadata"},
+	}
+	if err := tarWriter.WriteHeader(&globalHeader); err != nil {
+		t.Fatal(err)
+	}
+	if err := tarWriter.WriteHeader(&tar.Header{Name: "odoo-argentina-commit/", Typeflag: tar.TypeDir}); err != nil {
+		t.Fatal(err)
+	}
+	if err := tarWriter.WriteHeader(&tar.Header{Name: "odoo-argentina-commit/l10n_ar_afipws/__manifest__.py", Typeflag: tar.TypeReg, Size: 2}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tarWriter.Write([]byte("{}")); err != nil {
+		t.Fatal(err)
+	}
+	if err := tarWriter.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := gzipWriter.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Assert that the fixture exposes a real PAX global metadata entry.
+	archiveFile, err := os.Open(archivePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer archiveFile.Close()
+	stream, err := gzip.NewReader(archiveFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stream.Close()
+	first, err := tar.NewReader(stream).Next()
+	if err != nil || first.Typeflag != tar.TypeXGlobalHeader {
+		t.Fatalf("expected PAX global header, got %#v: %v", first, err)
+	}
+
+	destinationPath := filepath.Join(root, "addons")
+	if err := extractArchiveSafely(archivePath, destinationPath); err != nil {
+		t.Fatal(err)
+	}
+	if err := validateRepositoryHasManifest(destinationPath); err != nil {
+		t.Fatal(err)
+	}
+	manifestPath := filepath.Join(destinationPath, "l10n_ar_afipws", "__manifest__.py")
+	if _, err := os.Stat(manifestPath); err != nil {
+		t.Fatalf("expected addon manifest: %v", err)
+	}
+}
+
+func TestRejectOrdinaryFileNamedPAXGlobalHeader(t *testing.T) {
+	root := t.TempDir()
+	archivePath := filepath.Join(root, "spoof.tar.gz")
+	createTestArchive(t, archivePath, []tar.Header{
+		{Name: "pax_global_header", Typeflag: tar.TypeReg, Size: 2},
+		{Name: "odoo-argentina-commit/", Typeflag: tar.TypeDir},
+	}, "{}")
+	if err := extractArchiveSafely(archivePath, filepath.Join(root, "reject")); err == nil {
+		t.Fatal("regular file pretending to be PAX metadata was accepted")
+	}
+}

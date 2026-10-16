@@ -130,6 +130,14 @@ func extractArchiveSafely(sourceArchivePath string, destinationDirectory string)
 		if fileCount > maximumArchiveEntries {
 			return errors.New("too many tar archive entries")
 		}
+		// Go's archive/tar.Reader.Next returns PAX global headers as entries.
+		// They contain metadata, not repository files, and can precede the root
+		// directory in GitHub's tar.gz archives (e.g. pax_global_header).
+		// Skip only the explicit TAR metadata type, never an ordinary file with
+		// the same name. Regular files outside the repository root stay invalid.
+		if header.Typeflag == tar.TypeXGlobalHeader {
+			continue
+		}
 		if header.Name == "" || strings.HasPrefix(header.Name, "/") || strings.Contains(header.Name, "\\") {
 			return fmt.Errorf("unsafe archive member %q", header.Name)
 		}
