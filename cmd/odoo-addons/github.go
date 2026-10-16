@@ -117,6 +117,7 @@ func extractArchiveSafely(sourceArchivePath string, destinationDirectory string)
 	rootDirectory := ""
 	totalBytes := int64(0)
 	fileCount := 0
+	skippedPackagingEntries := 0
 	extractedFiles := make(map[string]bool)
 	for {
 		header, err := reader.Next()
@@ -168,6 +169,15 @@ func extractArchiveSafely(sourceArchivePath string, destinationDirectory string)
 		if clean == "." || strings.HasPrefix(clean, "../") || strings.HasPrefix(clean, "/") {
 			return fmt.Errorf("unsafe archive path %q", header.Name)
 		}
+		// OCA's repository-level setup/ tree is Python packaging machinery,
+		// not an Odoo addon. Its entries commonly include symlinks back to
+		// top-level modules. Ignore the entire tree rather than following
+		// those links or permitting symlinks in the addon directories.
+		// Path validation and the archive entry count still apply.
+		if clean == "setup" || strings.HasPrefix(clean, "setup/") {
+			skippedPackagingEntries++
+			continue
+		}
 		destinationPath := filepath.Join(destinationDirectory, filepath.FromSlash(clean))
 		if header.Typeflag == tar.TypeDir {
 			if err := os.MkdirAll(destinationPath, 0755); err != nil {
@@ -210,6 +220,9 @@ func extractArchiveSafely(sourceArchivePath string, destinationDirectory string)
 	}
 	if rootDirectory == "" {
 		return errors.New("empty tar archive")
+	}
+	if skippedPackagingEntries > 0 {
+		fmt.Printf("SKIP: %d repository setup/ packaging entries (not needed to load Odoo addons)\n", skippedPackagingEntries)
 	}
 	return nil
 }

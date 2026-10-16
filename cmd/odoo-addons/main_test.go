@@ -256,3 +256,63 @@ func TestRejectOrdinaryFileNamedPAXGlobalHeader(t *testing.T) {
 		t.Fatal("regular file pretending to be PAX metadata was accepted")
 	}
 }
+
+// OCA repositories often have symlinks in setup/ for Python packaging.
+// setup/ is not used by Odoo's addons_path, so it must be omitted safely.
+func TestArchiveSkipsOCAPackagingSymlink(t *testing.T) {
+	root := t.TempDir()
+	archivePath := filepath.Join(root, "oca-setup.tar.gz")
+	createTestArchive(t, archivePath, []tar.Header{
+		{Name: "server-tools-commit/", Typeflag: tar.TypeDir},
+		{Name: "server-tools-commit/setup/", Typeflag: tar.TypeDir},
+		{Name: "server-tools-commit/setup/test_auditlog/", Typeflag: tar.TypeDir},
+		{Name: "server-tools-commit/setup/test_auditlog/odoo/addons/test_auditlog", Typeflag: tar.TypeSymlink, Linkname: "../../../../test_auditlog"},
+		{Name: "server-tools-commit/test_auditlog/", Typeflag: tar.TypeDir},
+		{Name: "server-tools-commit/test_auditlog/__manifest__.py", Typeflag: tar.TypeReg, Size: 2},
+	}, "{}")
+	destinationPath := filepath.Join(root, "server-tools")
+	if err := extractArchiveSafely(archivePath, destinationPath); err != nil {
+		t.Fatal(err)
+	}
+	if err := validateRepositoryHasManifest(destinationPath); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Lstat(filepath.Join(destinationPath, "setup")); !os.IsNotExist(err) {
+		t.Fatalf("packaging setup directory unexpectedly installed: %v", err)
+	}
+	manifestPath := filepath.Join(destinationPath, "test_auditlog", "__manifest__.py")
+	if _, err := os.Stat(manifestPath); err != nil {
+		t.Fatalf("Odoo addon missing after packaging directory skip: %v", err)
+	}
+}
+
+// A symlink inside a top-level addon is still rejected; packaging handling
+// must not weaken the repository extractor's link protections.
+func TestArchiveRejectsAddonSymlinkWithOCAPackaging(t *testing.T) {
+	root := t.TempDir()
+	archivePath := filepath.Join(root, "unsafe-addon.tar.gz")
+	createTestArchive(t, archivePath, []tar.Header{
+		{Name: "repo-commit/", Typeflag: tar.TypeDir},
+		{Name: "repo-commit/setup/tool/odoo/addons/tool", Typeflag: tar.TypeSymlink, Linkname: "../../../../tool"},
+		{Name: "repo-commit/tool/", Typeflag: tar.TypeDir},
+		{Name: "repo-commit/tool/__manifest__.py", Typeflag: tar.TypeReg, Size: 2},
+		{Name: "repo-commit/tool/static/link", Typeflag: tar.TypeSymlink, Linkname: "/etc/passwd"},
+	}, "{}")
+	if err := extractArchiveSafely(archivePath, filepath.Join(root, "rejected")); err == nil {
+		t.Fatal("unsafe addon symlink accepted")
+	}
+}
+
+// Traversal in an ignored packaging directory must still be detected before
+// the subtree is skipped.
+func TestArchiveRejectsTraversalUnderSetup(t *testing.T) {
+	root := t.TempDir()
+	archivePath := filepath.Join(root, "setup-traversal.tar.gz")
+	createTestArchive(t, archivePath, []tar.Header{
+		{Name: "repo-commit/", Typeflag: tar.TypeDir},
+		{Name: "repo-commit/setup/../../escape", Typeflag: tar.TypeReg, Size: 2},
+	}, "{}")
+	if err := extractArchiveSafely(archivePath, filepath.Join(root, "rejected")); err == nil {
+		t.Fatal("unsafe traversal under setup ignored")
+	}
+}

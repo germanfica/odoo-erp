@@ -49,7 +49,7 @@ go run ./cmd/odoo-addons fetch --destination ./build/odoo-addons \
 Los comandos son:
 
 - `validate`: comprueba formato de `addons.mod`, `addons.required`, lock opcional y plantilla de Odoo sin descargar ni escribir nada.
-- `fetch`: con lock válido utiliza el commit bloqueado y comprueba SHA-256; sin lock consulta el SHA de la rama actual mediante la API de GitHub, descarga ese SHA y registra las revisiones. Extrae con validación de rutas, límites de tamaño y rechazo de enlaces simbólicos. No sobrescribe carpetas existentes.
+- `fetch`: con lock válido utiliza el commit bloqueado y comprueba SHA-256; sin lock consulta el SHA de la rama actual mediante la API de GitHub, descarga ese SHA y registra las revisiones. Extrae con validación de rutas, límites de tamaño y rechazo de enlaces simbólicos en los módulos. Omite el árbol auxiliar `setup/` de los repositorios OCA (empaquetado Python con enlaces simbólicos), sin seguir ninguno de esos enlaces; las rutas se validan antes de omitirlas. No sobrescribe carpetas existentes.
 - `update`: consulta los SHA actuales, descarga/valida los archivos y actualiza `addons.lock` mediante reemplazo de archivo temporal solo después de completar correctamente todas las descargas.
 - `generate`: genera un nuevo `odoo.conf` a partir de la plantilla y de `addons.mod`, sin tocar el archivo original ni sobrescribir un destino existente.
 
