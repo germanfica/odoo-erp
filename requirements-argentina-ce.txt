@@ -1,8 +1,10 @@
 # Fuentes: ingadhoc/odoo-argentina-ce, rama 18.0, requirements.txt.
 # Incluidas para que l10n_ar_afipws y l10n_ar_afipws_fe puedan instalarse.
-# Versiones/transitivas deben validarse para cada build antes de facturar en ARCA.
+# Versions/transitive dependencies must be pinned and tested before invoicing via ARCA.
 pyOpenSSL
 M2Crypto
 httplib2>=0.7
 pysimplesoap~=1.8.22
-git+https://github.com/filoquin/pyafipws.git@py3k
+# The previous git+https VCS requirement would still require the Git executable.
+# Direct GitHub ZIP archive replaces it; the py3k branch is not pinned yet.
+PyAfipWs @ https://github.com/filoquin/pyafipws/archive/refs/heads/py3k.zip

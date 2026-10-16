@@ -96,7 +96,22 @@ pipeline {
             }
         }
 
-        stage('Copy Odoo Configuration File') {
+        stage('Validate Odoo addon tooling') {
+            steps {
+                sh '''
+                    if command -v go >/dev/null 2>&1; then
+                        go test ./...
+                        go run ./cmd/odoo-addons validate
+                    else
+                        echo 'Go unavailable on Jenkins agent: tests run in Docker addons-builder stage'
+                    fi
+                '''
+            }
+        }
+
+        // The external copy playbook may still prepare deployment files.
+        // It must NOT mount raw config/odoo.conf onto /etc/odoo/odoo.conf.
+        stage('Copy deployment configuration') {
             steps {
                 script {
                     withCredentials([file(credentialsId: 'ansible-vault-password', variable: 'VAULT_PASS_FILE')]) {

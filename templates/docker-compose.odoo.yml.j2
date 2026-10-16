@@ -28,7 +28,8 @@ services:
       PASSWORD: {{ POSTGRES_PASSWORD | to_json }}
     volumes:
       - odoo_web_data:/var/lib/odoo
-      - ./config/odoo.conf:/etc/odoo/odoo.conf:ro
+      # /etc/odoo/odoo.conf is generated during image build from config/odoo.conf.
+      # Never mount the source template here: it would hide generated addons_path.
       - ./addons:/mnt/extra-addons:ro
     networks:
       - net
