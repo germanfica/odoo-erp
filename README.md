@@ -110,29 +110,6 @@ Odoo continúa usando Python. El Dockerfile genera wheels de M2Crypto, PyAfipWs 
 
 Se probaron los flujos de configuración y lock, validación de nombres, rechazo de archivos `.tar.gz` con rutas peligrosas, rechazo de symlinks y ejecución sin mutaciones con `--dry-run`. El ZIP no sustituye un build real de Docker ni pruebas completas de Odoo, PostgreSQL y homologación de ARCA. Antes de usarlo en producción, verificá la instalación de módulos, facturación electrónica, HTTPS, permisos, copias de seguridad y restauración de datos. Evitá colocar secretos en el Dockerfile o los manifiestos.
 
-## Reverse proxy example
-
-Ejemplo conservado del README original:
-
-```nginx
-location / {
-    # Si van a la raíz, los llevamos a /odoo/
-    rewrite ^/$ /odoo/ break;
-
-    # Apuntamos al backend de Odoo (RFC 5737, TEST-NET-1)
-    proxy_pass http://192.0.2.10:8069/;
-
-    proxy_set_header Host $host;
-    proxy_set_header X-Real-IP $remote_addr;
-    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    proxy_set_header X-Forwarded-Proto $scheme;
-}
-```
-
-- Si Nginx Proxy Manager y Odoo comparten red Docker, podés usar `http://odoo:8069/`.
-- Revisá el prefijo `/odoo/`; no establezcas `http_root = /odoo` sin ajustar el proxy.
-- Restringí la exposición de `8069` a las redes necesarias.
-
 ## Update apps list
 
 After deploying new addons, go to **Apps - Update Apps List** to make them available for installation.
