@@ -6,6 +6,10 @@ Odoo Community 18 con addons OCA, localización Argentina y `odoo-web-responsive
 
 El Dockerfile tiene tres etapas: **Go** (descargas y configuración), **Python wheels** (construcción de dependencias Python de Odoo/Argentina) e **imagen final `odoo:18.0`** (recibe únicamente los addons, la configuración generada y las dependencias Python ya compiladas). El compilador Go, Git y las herramientas de compilación de Python no pasan a la imagen final.
 
+### Aislamiento de dependencias Python
+
+Las wheels de la etapa `python-wheels` se instalan en `/opt/odoo-python` mediante `pip --target`. La imagen final define `PYTHONPATH=/opt/odoo-python` para que Odoo pueda importarlas sin desinstalar ni modificar los paquetes administrados por Ubuntu (por ejemplo `typing_extensions`). La construcción verifica el import de `M2Crypto` y `OpenSSL` y la distribución `PyAfipWs`. Esto evita el error de pip por ausencia de `RECORD`, pero las versiones de las dependencias aún deben comprobarse contra Odoo 18 antes del despliegue.
+
 ## Dependencias de addons
 
 | Archivo | Propósito |

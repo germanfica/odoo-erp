@@ -46,10 +46,13 @@ USER root
 
 # Dependencias de compilacion requeridas por M2Crypto/pyafipws.
 # Compiladas en la etapa python-wheels, no permanecen en la imagen final.
+# Instala las wheels en una ruta aislada; no reemplaza paquetes de Ubuntu.
+# Python utiliza esta ruta primero, incluyendo el entrypoint original de Odoo.
+ENV PYTHONPATH=/opt/odoo-python
 COPY --from=python-wheels /opt/wheels /tmp/wheels
 RUN python3 -m pip install --no-cache-dir --no-index --find-links=/tmp/wheels \
-    --break-system-packages /tmp/wheels/*.whl && \
-    python3 -m pip show PyAfipWs M2Crypto >/dev/null && \
+    --target /opt/odoo-python /tmp/wheels/*.whl && \
+    python3 -c "import M2Crypto, OpenSSL; from importlib.metadata import version; version('PyAfipWs')" && \
     rm -rf /tmp/wheels
 
 # El resultado de Go se copia a la imagen final, sin copiar Go ni Git.
