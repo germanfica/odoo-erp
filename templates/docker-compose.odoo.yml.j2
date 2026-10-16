@@ -10,8 +10,11 @@ services:
       POSTGRES_PASSWORD: {{ POSTGRES_PASSWORD | to_json }}
     volumes:
       - odoo_db_data:/var/lib/postgresql/data
+    # Internal port only. Not published on the host.
+    expose:
+      - "5432"
     networks:
-      - net
+      - backend
 
   {{ APP_NAME }}:
     image: {{ APP_IMAGE_NAME }}:{{ APP_VERSION }}
@@ -20,8 +23,11 @@ services:
     restart: unless-stopped
     depends_on:
       - odoo-db
-    ports:
-      - "{{ ODOO_PORT }}:8069"
+    # Internal ports for HTTP and WebSocket traffic.
+    # Accessible through Nginx Proxy Manager, not published on the host.
+    expose:
+      - "8069"
+      - "8072"
     environment:
       HOST: odoo-db
       USER: {{ POSTGRES_USER | to_json }}
@@ -33,11 +39,17 @@ services:
       - ./addons:/mnt/extra-addons:ro
     networks:
       - net
+      - backend
 
 networks:
+  # Shared external bridge network for Nginx Proxy Manager.
   net:
-    driver: bridge
     external: true
+
+  # Isolated bridge network for Odoo and PostgreSQL.
+  backend:
+    driver: bridge
+    internal: true
 
 volumes:
   odoo_db_data: {}
