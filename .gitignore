@@ -2,9 +2,6 @@
 /addons/*
 !/addons/.gitkeep
 # Variables/secretos locales
-/.env
-/.env.*
-!/.env.example
 /vault.yml
 *.retry
 *.log
