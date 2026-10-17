@@ -1,9 +1,4 @@
-# Variables/secretos locales
 /vault.yml
-*.retry
 *.log
-/__pycache__/
-*.pyc
 /output.txt
 /build/
-/dist/
