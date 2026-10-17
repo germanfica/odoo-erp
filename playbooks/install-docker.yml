@@ -1,0 +1,128 @@
+# Installs Docker Engine on the Ansible target; called from local or SSH entry points.
+---
+- name: Instalar Docker Engine oficial en el host objetivo
+  hosts: "{{ TARGET_HOSTS | default('localhost') }}"
+  connection: "{{ TARGET_CONNECTION | default('local') }}"
+  become: "{{ USE_BECOME | default(true) }}"
+  gather_facts: true
+
+  vars:
+    DOCKER_USER: "{{ ansible_user | default(lookup('ansible.builtin.env', 'USER'), true) }}"
+    DOCKER_ADD_USER_TO_GROUP: false
+
+  pre_tasks:
+    - name: Load optional, gitignored deployment overrides
+      ansible.builtin.include_vars:
+        file: "{{ playbook_dir }}/../vars/site.yml"
+      when: lookup('ansible.builtin.fileglob', playbook_dir ~ '/../vars/site.yml') | length > 0
+
+    - name: Validar distribución compatible
+      ansible.builtin.assert:
+        that:
+          - ansible_facts['distribution'] in ['Ubuntu', 'Debian']
+        fail_msg: >-
+          Este playbook sólo admite Ubuntu y Debian, que son las
+          distribuciones cubiertas por el repositorio APT oficial de Docker.
+
+  tasks:
+    # Do not delete existing APT source files or replace unrelated keyrings.
+    - name: Inspect potentially conflicting legacy Docker APT sources
+      ansible.builtin.stat:
+        path: "{{ item }}"
+      loop:
+        - /etc/apt/sources.list.d/docker.list
+        - /etc/apt/sources.list.d/download_docker_com_linux_ubuntu.list
+      register: docker_legacy_sources
+
+    - name: Refuse automatic changes to legacy repository definitions
+      ansible.builtin.assert:
+        that:
+          - docker_legacy_sources.results | selectattr('stat.exists') | list | length == 0
+        fail_msg: >-
+          Existing legacy Docker APT repository configuration detected.
+          Review/migrate it manually before deploying. This installer does not delete it.
+
+    - name: Actualizar caché de APT sin borrar repositorios existentes
+      # ansible.builtin.apt:
+      #   update_cache: yes
+      # retries: 3
+      # delay: 5
+      # register: apt_cache_clean
+      # failed_when: apt_cache_clean is failed
+      block:
+        - name: Actualizar caché de APT
+          ansible.builtin.apt:
+            update_cache: yes
+
+      rescue:
+        - name: Fallar indicando revisar APT manualmente
+          ansible.builtin.fail:
+            msg: >-
+              No se pudo actualizar la caché de APT.
+              Para más detalle, ejecutar en el servidor remoto:
+              sudo apt update
+
+    - name: Instalar dependencias para repo oficial de Docker
+      ansible.builtin.apt:
+        name:
+          - ca-certificates
+          - curl
+        state: present
+
+    - name: Crear directorio de keyrings
+      ansible.builtin.file:
+        path: /etc/apt/keyrings
+        state: directory
+        mode: "0755"
+
+    - name: Descargar clave GPG oficial de Docker
+      ansible.builtin.get_url:
+        url: >-
+          https://download.docker.com/linux/{{
+            'ubuntu' if ansible_facts['distribution'] == 'Ubuntu' else 'debian'
+          }}/gpg
+        dest: /etc/apt/keyrings/docker.asc
+        mode: "0644"
+
+    - name: Configurar repo oficial de Docker
+      ansible.builtin.copy:
+        dest: /etc/apt/sources.list.d/docker.sources
+        mode: "0644"
+        content: |
+          Types: deb
+          URIs: https://download.docker.com/linux/{{ 'ubuntu' if ansible_facts['distribution'] == 'Ubuntu' else 'debian' }}
+          Suites: {{ ansible_facts['distribution_release'] }}
+          Components: stable
+          Architectures: {{ 'amd64' if ansible_facts['architecture'] in ['x86_64', 'amd64'] else ('arm64' if ansible_facts['architecture'] in ['aarch64', 'arm64'] else ansible_facts['architecture']) }}
+          Signed-By: /etc/apt/keyrings/docker.asc
+
+    - name: Actualizar caché de APT antes de instalar paquetes
+      ansible.builtin.apt:
+        update_cache: yes
+      retries: 3
+      delay: 5
+      register: result
+      until: result is succeeded
+
+    - name: Instalar Docker Engine oficial y Compose plugin
+      ansible.builtin.apt:
+        name:
+          - docker-ce
+          - docker-ce-cli
+          - containerd.io
+          - docker-buildx-plugin
+          - docker-compose-plugin
+        state: present
+
+    - name: Asegurar que Docker esté iniciado y habilitado
+      ansible.builtin.service:
+        name: docker
+        state: started
+        enabled: yes
+
+    - name: Optionally grant Docker socket access to the selected user
+      ansible.builtin.user:
+        name: "{{ DOCKER_USER }}"
+        groups: docker
+        append: true
+      when: DOCKER_ADD_USER_TO_GROUP | bool
