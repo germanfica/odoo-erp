@@ -14,6 +14,7 @@ services:
 
   odoo:
     build: .
+    image: odoo-community-argentina:18-local
     container_name: odoo
     restart: unless-stopped
     depends_on:
@@ -26,15 +27,14 @@ services:
       PASSWORD: odoo
     volumes:
       - odoo_web_data:/var/lib/odoo
-      - ./config:/etc/odoo   # Tu archivo odoo.conf personalizado
-      - ./addons:/mnt/extra-addons
+      - ./config/odoo.conf:/etc/odoo/odoo.conf:ro
+      - ./addons:/mnt/extra-addons:ro
     networks:
       - net
 
 networks:
   net:
     driver: bridge
-    # external: true
 
 volumes:
   odoo_db_data: {}

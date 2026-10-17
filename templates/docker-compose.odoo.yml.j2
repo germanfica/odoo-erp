@@ -1,3 +1,4 @@
+
 services:
   odoo-db:
     image: postgres:{{ POSTGRES_VERSION }}
@@ -5,36 +6,50 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_DB: postgres
-      POSTGRES_USER: {{ POSTGRES_USER }}
-      POSTGRES_PASSWORD: {{ POSTGRES_PASSWORD }}
+      POSTGRES_USER: {{ POSTGRES_USER | to_json }}
+      POSTGRES_PASSWORD: {{ POSTGRES_PASSWORD | to_json }}
     volumes:
       - odoo_db_data:/var/lib/postgresql/data
+    # Internal port only. Not published on the host.
+    expose:
+      - "5432"
     networks:
-      - net
+      - backend
 
   {{ APP_NAME }}:
     image: {{ APP_IMAGE_NAME }}:{{ APP_VERSION }}
+    pull_policy: never
     container_name: {{ APP_NAME }}
     restart: unless-stopped
     depends_on:
       - odoo-db
-    ports:
-      - "{{ ODOO_PORT }}:8069"
+    # Internal ports for HTTP and WebSocket traffic.
+    # Accessible through Nginx Proxy Manager, not published on the host.
+    expose:
+      - "8069"
+      - "8072"
     environment:
       HOST: odoo-db
-      USER: {{ POSTGRES_USER }}
-      PASSWORD: {{ POSTGRES_PASSWORD }}
+      USER: {{ POSTGRES_USER | to_json }}
+      PASSWORD: {{ POSTGRES_PASSWORD | to_json }}
     volumes:
       - odoo_web_data:/var/lib/odoo
-      - ./config/odoo.conf:/etc/odoo/odoo.conf:ro
-      - ./addons:/mnt/extra-addons
+      # /etc/odoo/odoo.conf is generated during image build from config/odoo.conf.
+      # Never mount the source template here: it would hide generated addons_path.
+      - ./addons:/mnt/extra-addons:ro
     networks:
       - net
+      - backend
 
 networks:
+  # Shared external bridge network for Nginx Proxy Manager.
   net:
-    driver: bridge
     external: true
+
+  # Isolated bridge network for Odoo and PostgreSQL.
+  backend:
+    driver: bridge
+    internal: true
 
 volumes:
   odoo_db_data: {}

@@ -1,0 +1,88 @@
+---
+# Remote Docker build. The user's config/odoo.conf is copied only as an input
+# template; it is never mounted directly over the generated container config.
+- name: Build Odoo 18 using the Go multi-stage addon builder
+  hosts: "{{ TARGET_HOSTS | default('odoo') }}"
+  gather_facts: false
+  become: "{{ USE_BECOME | default(true) | bool }}"
+  vars:
+    odoo_build_context: /opt/odoo-image-build
+    odoo_image_name: "{{ APP_IMAGE_NAME | default('odoo-community-argentina') }}"
+    odoo_image_version: "{{ APP_VERSION | default('18-local') }}"
+    odoo_refresh: "{{ ADDONS_REFRESH | default('0') }}"
+    odoo_build_files:
+      - Dockerfile
+      - .dockerignore
+      - requirements-argentina-ce.txt
+      - config/odoo.conf
+      - config/addons.mod
+      - config/addons.required
+      - go.mod
+      - cmd/odoo-addons/main.go
+      - cmd/odoo-addons/manifest.go
+      - cmd/odoo-addons/config.go
+      - cmd/odoo-addons/github.go
+      - cmd/odoo-addons/operations.go
+      - cmd/odoo-addons/main_test.go
+
+  tasks:
+    - name: Create Docker build directories
+      ansible.builtin.file:
+        path: "{{ odoo_build_context }}/{{ item }}"
+        state: directory
+        owner: root
+        group: root
+        mode: '0755'
+      loop:
+        - config
+        - cmd
+        - cmd/odoo-addons
+
+    - name: Copy mandatory Docker build files
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../{{ item }}"
+        dest: "{{ odoo_build_context }}/{{ item }}"
+        owner: root
+        group: root
+        mode: '0644'
+      loop: "{{ odoo_build_files }}"
+
+    - name: Check whether optional lockfile exists in Jenkins checkout
+      ansible.builtin.stat:
+        path: "{{ playbook_dir }}/../config/addons.lock"
+      delegate_to: localhost
+      become: false
+      register: addons_lock_src
+
+    - name: Copy optional lockfile into Docker build context
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../config/addons.lock"
+        dest: "{{ odoo_build_context }}/config/addons.lock"
+        owner: root
+        group: root
+        mode: '0644'
+      when: addons_lock_src.stat.exists
+
+    - name: Remove stale remote lockfile when absent from checkout
+      ansible.builtin.file:
+        path: "{{ odoo_build_context }}/config/addons.lock"
+        state: absent
+      when: not addons_lock_src.stat.exists
+
+    - name: Build Odoo image on destination host
+      ansible.builtin.command:
+        argv:
+          - docker
+          - build
+          - --pull
+          - --build-arg
+          - "ADDONS_REFRESH={{ odoo_refresh }}"
+          - --tag
+          - "{{ odoo_image_name }}:{{ odoo_image_version }}"
+          - "{{ odoo_build_context }}"
+      register: odoo_docker_build
+      changed_when: true
+
+    - name: Show built image name
+      ansible.builtin.debug:
+        msg: "Built {{ odoo_image_name }}:{{ odoo_image_version }} on {{ inventory_hostname }}"

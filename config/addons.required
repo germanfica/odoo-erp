@@ -1,0 +1,15 @@
+# Mandatory module directories (one per line).
+# If an addon is deliberately removed from addons.mod, update this list too.
+l10n_ar_afipws
+l10n_ar_afipws_fe
+account_financial_report
+account_reconcile_oca
+account_asset_management
+account_budget_oca
+base_view_inheritance_extension
+date_range
+report_xlsx
+report_xlsx_helper
+web_dark_mode
+web_responsive
+web_responsive_dark_glass

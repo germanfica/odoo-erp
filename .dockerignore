@@ -1,0 +1,13 @@
+# Only Go sources, manifest configuration and Python build requirements.
+**
+!Dockerfile
+!go.mod
+!cmd/
+!cmd/odoo-addons/
+!cmd/odoo-addons/*.go
+!config/
+!config/odoo.conf
+!config/addons.mod
+!config/addons.required
+!config/addons.lock
+!requirements-argentina-ce.txt
