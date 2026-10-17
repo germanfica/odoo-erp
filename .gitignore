@@ -1,6 +1,3 @@
-# Addons descargados o personalizados: NO versionarlos en este repo.
-/addons/*
-!/addons/.gitkeep
 # Variables/secretos locales
 /vault.yml
 *.retry
