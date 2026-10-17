@@ -2,7 +2,7 @@
 # ansible-playbook install-docker.yml --ask-become-pass
 - name: Instalar Docker Engine oficial en el host local
   hosts: "{{ TARGET_HOSTS | default('localhost') }}"
-  connection: local
+  connection: "{{ TARGET_CONNECTION | default('local') }}"
   become: "{{ USE_BECOME | default(true) }}"
   gather_facts: true
 
