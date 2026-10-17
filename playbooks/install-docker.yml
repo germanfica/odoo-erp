@@ -1,21 +1,17 @@
-# Installs Docker Engine on the Ansible target; called from local or SSH entry points.
----
-- name: Instalar Docker Engine oficial en el host objetivo
+# Uso:
+# ansible-playbook install-docker.yml --ask-become-pass
+- name: Instalar Docker Engine oficial en el host local
   hosts: "{{ TARGET_HOSTS | default('localhost') }}"
-  connection: "{{ TARGET_CONNECTION | default('local') }}"
+  connection: local
   become: "{{ USE_BECOME | default(true) }}"
   gather_facts: true
 
   vars:
-    DOCKER_USER: "{{ ansible_user | default(lookup('ansible.builtin.env', 'USER'), true) }}"
-    DOCKER_ADD_USER_TO_GROUP: false
+    TARGET_HOSTS: "localhost"          # Nodo objetivo
+    USE_BECOME: true                   # Elevar privilegios sudo
+    DOCKER_USER: "{{ lookup('env', 'USER') }}"  # Usuario que inició Ansible
 
   pre_tasks:
-    - name: Load optional, gitignored deployment overrides
-      ansible.builtin.include_vars:
-        file: "{{ playbook_dir }}/../vars/site.yml"
-      when: lookup('ansible.builtin.fileglob', playbook_dir ~ '/../vars/site.yml') | length > 0
-
     - name: Validar distribución compatible
       ansible.builtin.assert:
         that:
@@ -25,24 +21,32 @@
           distribuciones cubiertas por el repositorio APT oficial de Docker.
 
   tasks:
-    # Do not delete existing APT source files or replace unrelated keyrings.
-    - name: Inspect potentially conflicting legacy Docker APT sources
-      ansible.builtin.stat:
+    # - name: Remover paquetes Docker no oficiales o conflictivos
+    #   ansible.builtin.apt:
+    #     name:
+    #       - docker.io
+    #       - docker-compose
+    #       - docker-compose-v2
+    #       - docker-doc
+    #       - podman-docker
+    #       - containerd
+    #       - runc
+    #     state: absent
+    #     purge: yes
+    #   ignore_errors: yes
+
+    - name: Limpiar repositorios Docker conflictivos
+      ansible.builtin.file:
         path: "{{ item }}"
+        state: absent
       loop:
         - /etc/apt/sources.list.d/docker.list
         - /etc/apt/sources.list.d/download_docker_com_linux_ubuntu.list
-      register: docker_legacy_sources
+        - /etc/apt/sources.list.d/docker.sources
+        - /usr/share/keyrings/docker-archive-keyring.gpg
+        - /etc/apt/keyrings/docker.asc
 
-    - name: Refuse automatic changes to legacy repository definitions
-      ansible.builtin.assert:
-        that:
-          - docker_legacy_sources.results | selectattr('stat.exists') | list | length == 0
-        fail_msg: >-
-          Existing legacy Docker APT repository configuration detected.
-          Review/migrate it manually before deploying. This installer does not delete it.
-
-    - name: Actualizar caché de APT sin borrar repositorios existentes
+    - name: Actualizar caché de APT luego de limpiar repos conflictivos
       # ansible.builtin.apt:
       #   update_cache: yes
       # retries: 3
@@ -114,15 +118,32 @@
           - docker-compose-plugin
         state: present
 
+    - name: Crear wrapper de compatibilidad docker-compose -> docker compose
+      ansible.builtin.copy:
+        dest: /usr/local/bin/docker-compose
+        owner: root
+        group: root
+        mode: "0755"
+        content: |
+          #!/bin/sh
+          exec docker compose "$@"
+
+    - name: Verificar compatibilidad docker-compose
+      ansible.builtin.command:
+        argv:
+          - docker-compose
+          - version
+      register: docker_compose_compat
+      changed_when: false
+
     - name: Asegurar que Docker esté iniciado y habilitado
       ansible.builtin.service:
         name: docker
         state: started
         enabled: yes
 
-    - name: Optionally grant Docker socket access to the selected user
+    - name: Agregar usuario a grupo docker
       ansible.builtin.user:
         name: "{{ DOCKER_USER }}"
         groups: docker
-        append: true
-      when: DOCKER_ADD_USER_TO_GROUP | bool
+        append: yes
