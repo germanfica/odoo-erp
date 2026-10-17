@@ -1,15 +1,4 @@
-# Addons descargados o personalizados: NO versionarlos en este repo.
-/addons/*
-!/addons/.gitkeep
-# Variables/secretos locales
-/.env
-/.env.*
-!/.env.example
 /vault.yml
-*.retry
 *.log
-/__pycache__/
-*.pyc
 /output.txt
 /build/
-/dist/
