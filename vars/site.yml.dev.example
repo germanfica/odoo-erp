@@ -1,0 +1,9 @@
+ODOO_POSTGRES_PASSWORD: "Bosque-Luna-Cascada-Montana-2026"
+
+NPM_ADMIN_AUTO_CREATE: true
+NPM_ADMIN_NAME: "Administrator"
+NPM_ADMIN_EMAIL: "admin@localhost"
+NPM_ADMIN_PASSWORD: "Farol-Aurora-Cerezo-Brisa-2026"
+
+NPM_PROXY_AUTO_CREATE: true
+NPM_PROXY_DOMAIN: localhost
