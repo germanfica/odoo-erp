@@ -10,6 +10,12 @@ services:
       - "81:81"
       - "443:443"
 
+{% if NPM_ADMIN_AUTO_CREATE | default(false) | bool %}
+    environment:
+      INITIAL_ADMIN_EMAIL: {{ NPM_ADMIN_EMAIL | to_json }}
+      INITIAL_ADMIN_PASSWORD: {{ NPM_ADMIN_PASSWORD | to_json }}
+{% endif %}
+
     volumes:
       - ./data:/data
       - ./letsencrypt:/etc/letsencrypt
