@@ -1,0 +1,14 @@
+# Example usage (RFC 5737 documentation-only address):
+# ansible-playbook -i '192.0.2.10,' -u username -K playbooks/deploy-remote-all.yml \
+#   -e TARGET_HOSTS=all -e TARGET_CONNECTION=ssh \
+#   -e ODOO_BUILD_TARGET_HOSTS=all -e DOCKER_USER=username
+---
+# Reuse the existing install-docker.yml for local and SSH deployments.
+# Its play-level TARGET_HOSTS defaults to localhost: override this with -e when remote.
+# Requires install-docker.yml to support TARGET_CONNECTION (as shown by the user).
+- name: Install Docker, build Odoo and deploy Odoo with NPM remotely
+  ansible.builtin.import_playbook: install-all.yml
+  vars:
+    TARGET_HOSTS: all
+    TARGET_CONNECTION: ssh
+    ODOO_BUILD_TARGET_HOSTS: all

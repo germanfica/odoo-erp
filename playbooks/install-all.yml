@@ -1,0 +1,8 @@
+---
+# Reuse install-docker.yml unchanged for local or SSH execution.
+# Its Docker APT tasks may remove existing repository configuration files.
+- name: Install Docker Engine and Compose
+  ansible.builtin.import_playbook: install-docker.yml
+
+- name: Build and deploy Odoo and NPM
+  ansible.builtin.import_playbook: install-services.yml

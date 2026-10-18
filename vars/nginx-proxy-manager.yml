@@ -1,0 +1,5 @@
+---
+# Public defaults for a separate npm-odoo Compose project.
+# NPM admin (port 81) is exposed on all interfaces by the requested template.
+NPM_BASE_PATH: /opt/npm-odoo
+NPM_VERSION: "2.16.0"

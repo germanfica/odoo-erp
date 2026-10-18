@@ -1,0 +1,19 @@
+---
+# Copy this file to vars/site.yml. This file is ignored by vars/.gitignore.
+# Set a long, random password before deploying Odoo.
+ODOO_POSTGRES_PASSWORD: "CHANGE_ME_TO_A_LONG_RANDOM_PASSWORD"
+
+# Optional Odoo overrides:
+# ODOO_BASE_PATH: /opt/odoo
+# ODOO_IMAGE_VERSION: "18-local"
+# ODOO_POSTGRES_USER: odoo
+# ODOO_BUILD_IMAGE: true
+# ODOO_ADDONS_REFRESH: "0"
+
+# Optional NPM overrides:
+# NPM_BASE_PATH: /opt/npm-odoo
+# NPM_VERSION: "2.16.0"
+
+# For remote Docker installation use the CLI extra vars shown in DEPLOYMENT.md.
+# The existing install-docker.yml obtains DOCKER_USER from the controller's USER
+# environment variable by default, so specify the target username with -e.
