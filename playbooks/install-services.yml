@@ -5,3 +5,6 @@
 
 - name: Deploy Nginx Proxy Manager
   ansible.builtin.import_playbook: install-nginx-proxy-manager.yml
+
+- name: Configure Odoo Proxy Host in Nginx Proxy Manager
+  ansible.builtin.import_playbook: configure-nginx-proxy-manager.yml

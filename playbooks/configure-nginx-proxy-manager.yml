@@ -1,0 +1,151 @@
+---
+# Configure NPM through its local REST API; requires an existing NPM instance
+# and an initialized administrator. This playbook never installs NPM or Odoo.
+# In remote SSH deployments, 127.0.0.1 resolves on the target machine.
+- name: Configure Nginx Proxy Manager for Odoo
+  hosts: "{{ TARGET_HOSTS | default('localhost') }}"
+  connection: "{{ TARGET_CONNECTION | default('local') }}"
+  become: false
+  gather_facts: false
+
+  vars_files:
+    - "{{ playbook_dir }}/../vars/nginx-proxy-manager.yml"
+    - "{{ playbook_dir }}/../vars/odoo.yml"
+
+  vars:
+    NPM_API_BASE: "http://127.0.0.1:81/api"
+    NPM_PROXY_TARGET: "{{ ODOO_APP_NAME | default('odoo') }}"
+
+  pre_tasks:
+    - name: Load optional, gitignored deployment overrides
+      ansible.builtin.include_vars:
+        file: "{{ playbook_dir }}/../vars/site.yml"
+      when: lookup('ansible.builtin.fileglob', playbook_dir ~ '/../vars/site.yml') | length > 0
+
+  tasks:
+    - name: Configure NPM Proxy Host for Odoo when requested
+      when: NPM_PROXY_AUTO_CREATE | default(false) | bool
+      block:
+        - name: Validate NPM admin credentials and Proxy Host domain
+          ansible.builtin.assert:
+            that:
+              - (NPM_ADMIN_EMAIL | default('') | trim | length) > 0
+              - (NPM_ADMIN_PASSWORD | default('') | length) > 0
+              - (NPM_PROXY_DOMAIN | trim | length) > 0
+              - "' ' not in NPM_PROXY_DOMAIN"
+            fail_msg: >-
+              Set NPM_ADMIN_EMAIL and NPM_ADMIN_PASSWORD in the gitignored
+              vars/site.yml, and configure a valid NPM_PROXY_DOMAIN.
+
+        - name: Wait for the NPM HTTP API to become ready
+          ansible.builtin.uri:
+            url: "{{ NPM_API_BASE }}"
+            method: GET
+            status_code: 200
+          register: npm_api_health
+          retries: 30
+          delay: 2
+          until: npm_api_health.status | default(0) == 200
+          changed_when: false
+
+        - name: Authenticate to the local NPM API
+          ansible.builtin.uri:
+            url: "{{ NPM_API_BASE }}/tokens"
+            method: POST
+            body_format: json
+            body:
+              identity: "{{ NPM_ADMIN_EMAIL }}"
+              secret: "{{ NPM_ADMIN_PASSWORD }}"
+            status_code: 200
+            return_content: true
+          register: npm_api_login
+          no_log: true
+
+        - name: Require an NPM API access token
+          ansible.builtin.assert:
+            that:
+              - npm_api_login.json.token is defined
+              - npm_api_login.json.token | length > 0
+            fail_msg: >-
+              The NPM login did not issue an access token.
+              Check credentials and whether the account requires two-factor authentication.
+
+        - name: Fetch existing NPM Proxy Hosts
+          ansible.builtin.uri:
+            url: "{{ NPM_API_BASE }}/nginx/proxy-hosts"
+            method: GET
+            headers:
+              Authorization: "Bearer {{ npm_api_login.json.token }}"
+            status_code: 200
+            return_content: true
+          register: npm_api_proxy_hosts
+          changed_when: false
+          no_log: true
+
+        - name: Find any existing Proxy Host claiming the requested domain
+          ansible.builtin.set_fact:
+            npm_proxy_matches: >-
+              {{ npm_api_proxy_hosts.json
+                 | selectattr('domain_names', 'contains', NPM_PROXY_DOMAIN)
+                 | list }}
+
+        - name: Reject existing Proxy Hosts pointing elsewhere
+          ansible.builtin.assert:
+            that:
+              - npm_proxy_matches | length <= 1
+              - npm_proxy_matches[0].forward_scheme == 'http'
+              - npm_proxy_matches[0].forward_host == NPM_PROXY_TARGET
+              - npm_proxy_matches[0].forward_port | int == 8069
+              - npm_proxy_matches[0].access_list_id | int == 0
+              - npm_proxy_matches[0].certificate_id | int == 0
+            fail_msg: >-
+              An NPM Proxy Host already uses {{ NPM_PROXY_DOMAIN }} with a different
+              target or security configuration. Refusing to overwrite it automatically.
+          when: npm_proxy_matches | length > 0
+
+        - name: Create an HTTP-only public Odoo Proxy Host if missing
+          ansible.builtin.uri:
+            url: "{{ NPM_API_BASE }}/nginx/proxy-hosts"
+            method: POST
+            headers:
+              Authorization: "Bearer {{ npm_api_login.json.token }}"
+            body_format: json
+            body:
+              domain_names:
+                - "{{ NPM_PROXY_DOMAIN }}"
+              forward_scheme: http
+              forward_host: "{{ NPM_PROXY_TARGET }}"
+              forward_port: 8069
+              certificate_id: 0
+              ssl_forced: false
+              hsts_enabled: false
+              hsts_subdomains: false
+              http2_support: false
+              access_list_id: 0
+              caching_enabled: false
+              block_exploits: false
+              allow_websocket_upgrade: true
+              advanced_config: ""
+              enabled: true
+              locations:
+                - path: /websocket
+                  forward_scheme: http
+                  forward_host: "{{ NPM_PROXY_TARGET }}"
+                  forward_port: 8072
+                  forward_path: ""
+                  access_list_id: 0
+                  advanced_config: |
+                    proxy_read_timeout 3600s;
+                    proxy_send_timeout 3600s;
+                    proxy_buffering off;
+            status_code: 201
+          when: npm_proxy_matches | length == 0
+          no_log: true
+
+        - name: Report the NPM Proxy Host provisioning result
+          ansible.builtin.debug:
+            msg: >-
+              {{ NPM_PROXY_DOMAIN }} -> http://{{ NPM_PROXY_TARGET }}:8069
+              ({{ 'already existed; preserved unchanged' if npm_proxy_matches | length > 0
+                 else 'created with /websocket -> http://' ~ NPM_PROXY_TARGET ~ ':8072' }})
+

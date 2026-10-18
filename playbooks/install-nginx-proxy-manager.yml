@@ -1,6 +1,6 @@
 ---
 # Separate npm-odoo Compose project attached to Odoo's external net bridge.
-# Proxy hosts and SSL certificates still need manual configuration in the NPM UI.
+# Proxy Hosts are configured separately in configure-nginx-proxy-manager.yml.
 - name: Deploy Nginx Proxy Manager for Odoo
   hosts: "{{ TARGET_HOSTS | default('localhost') }}"
   connection: "{{ TARGET_CONNECTION | default('local') }}"
