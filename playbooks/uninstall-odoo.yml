@@ -1,0 +1,173 @@
+---
+# Run from playbooks/ with vars/odoo.yml and vars/nginx-proxy-manager.yml.
+# By default removes Odoo containers only and preserves all persistent data.
+# REMOVE_ALL enables every REMOVE_* option. Destructive options require confirmation.
+- name: Uninstall managed Odoo deployment
+  hosts: "{{ TARGET_HOSTS | default('localhost') }}"
+  connection: "{{ TARGET_CONNECTION | default('local') }}"
+  become: "{{ USE_BECOME | default(true) | bool }}"
+  gather_facts: false
+  vars_files:
+    - "{{ playbook_dir }}/../vars/odoo.yml"
+    - "{{ playbook_dir }}/../vars/nginx-proxy-manager.yml"
+  vars:
+    REMOVE_ALL: false
+    REMOVE_VOLUMES: false
+    REMOVE_FILES: false
+    REMOVE_IMAGE: false
+    REMOVE_NPM: false
+    CONFIRM_UNINSTALL: false
+    ODOO_COMPOSE_PATH: "{{ ODOO_BASE_PATH }}/docker-compose.yml"
+    NPM_COMPOSE_PATH: "{{ NPM_BASE_PATH }}/docker-compose.yml"
+    NPM_INSTALL_METADATA: "{{ NPM_BASE_PATH }}/.ansible-install.json"
+
+  pre_tasks:
+    - name: Load optional deployment overrides
+      ansible.builtin.include_vars:
+        file: "{{ playbook_dir }}/../vars/site.yml"
+      when: lookup('ansible.builtin.fileglob', playbook_dir ~ '/../vars/site.yml') | length > 0
+
+    - name: Resolve removal options
+      ansible.builtin.set_fact:
+        remove_volumes_effective: "{{ (REMOVE_ALL | bool) or (REMOVE_VOLUMES | bool) }}"
+        remove_files_effective: "{{ (REMOVE_ALL | bool) or (REMOVE_FILES | bool) }}"
+        remove_image_effective: "{{ (REMOVE_ALL | bool) or (REMOVE_IMAGE | bool) }}"
+        remove_npm_effective: "{{ (REMOVE_ALL | bool) or (REMOVE_NPM | bool) }}"
+
+    - name: Validate paths, projects and destructive removal confirmation
+      ansible.builtin.assert:
+        that:
+          - ODOO_COMPOSE_PROJECT == 'odoo'
+          - ODOO_BASE_PATH is match('^/[^\\s]+$')
+          - ODOO_BASE_PATH not in ['/', '/opt', '/srv', '/mnt']
+          - ODOO_APP_NAME is match('^[a-zA-Z][a-zA-Z0-9_.-]*$')
+          - not ((remove_volumes_effective or remove_files_effective or remove_image_effective or remove_npm_effective) and not (CONFIRM_UNINSTALL | bool))
+          - not remove_npm_effective or (NPM_BASE_PATH is match('^/[^\\s]+$'))
+          - not remove_npm_effective or (NPM_BASE_PATH not in ['/', '/opt', '/srv', '/mnt'])
+          - not remove_npm_effective or NPM_BASE_PATH != ODOO_BASE_PATH
+        fail_msg: 'Invalid settings or destructive removal requires -e CONFIRM_UNINSTALL=true.'
+
+    - name: Verify Docker Compose
+      ansible.builtin.command:
+        argv: [docker, compose, version]
+      changed_when: false
+
+    - name: Check Odoo Compose file
+      ansible.builtin.stat:
+        path: "{{ ODOO_COMPOSE_PATH }}"
+      register: odoo_compose_stat
+
+    - name: Require Odoo Compose file
+      ansible.builtin.assert:
+        that:
+          - odoo_compose_stat.stat.isreg | default(false)
+        fail_msg: 'Odoo Compose file not found; refusing to guess which resources to delete.'
+
+    - name: Inspect Odoo and PostgreSQL container ownership
+      ansible.builtin.command:
+        argv: [docker, container, inspect, --format, "{{ '{{index .Config.Labels `com.docker.compose.project`}}' }}", "{{ item }}"]
+      loop:
+        - "{{ ODOO_APP_NAME }}"
+        - odoo-db
+      register: odoo_owners
+      failed_when: false
+      changed_when: false
+
+    - name: Refuse containers belonging to another Odoo project
+      ansible.builtin.assert:
+        that:
+          - item.rc != 0 or (item.stdout | trim) == ODOO_COMPOSE_PROJECT
+        fail_msg: 'Container {{ item.item }} belongs to a different Compose project.'
+      loop: "{{ odoo_owners.results }}"
+
+    - name: Validate Odoo Compose config
+      ansible.builtin.command:
+        argv: [docker, compose, --project-name, "{{ ODOO_COMPOSE_PROJECT }}", --file, "{{ ODOO_COMPOSE_PATH }}", config, --quiet]
+      changed_when: false
+      no_log: true
+
+    - name: Check NPM Compose file
+      ansible.builtin.stat:
+        path: "{{ NPM_COMPOSE_PATH }}"
+      register: npm_compose_stat
+      when: remove_npm_effective
+
+    - name: Check NPM installation marker
+      ansible.builtin.stat:
+        path: "{{ NPM_INSTALL_METADATA }}"
+      register: npm_metadata_stat
+      when: remove_npm_effective
+
+    - name: Inspect NPM container ownership
+      ansible.builtin.command:
+        argv: [docker, container, inspect, --format, "{{ '{{index .Config.Labels `com.docker.compose.project`}}' }}", npm-odoo-app-1]
+      register: npm_owner
+      changed_when: false
+      failed_when: false
+      when: remove_npm_effective
+
+    - name: Require managed NPM installation
+      ansible.builtin.assert:
+        that:
+          - npm_compose_stat.stat.isreg | default(false)
+          - npm_metadata_stat.stat.isreg | default(false)
+          - npm_owner.rc != 0 or (npm_owner.stdout | trim) == 'npm-odoo'
+        fail_msg: 'NPM must have its managed Compose file, installation marker and expected container ownership.'
+      when: remove_npm_effective
+
+    - name: Validate NPM Compose project
+      ansible.builtin.command:
+        argv: [docker, compose, --project-name, npm-odoo, --file, "{{ NPM_COMPOSE_PATH }}", config, --quiet]
+      changed_when: false
+      when: remove_npm_effective
+
+  tasks:
+    - name: Show effective removal plan
+      ansible.builtin.debug:
+        msg:
+          - 'REMOVE_ALL: {{ REMOVE_ALL | bool }}'
+          - 'Remove Odoo named/anonymous volumes: {{ remove_volumes_effective }}'
+          - 'Remove Odoo installation directory and bind-mount data: {{ remove_files_effective }}'
+          - 'Remove Odoo image: {{ remove_image_effective }}'
+          - 'Remove managed NPM: {{ remove_npm_effective }}'
+          - 'NPM data and letsencrypt directories will be deleted only if REMOVE_FILES=true (or REMOVE_ALL=true).'
+          - 'Shared Docker network net and Docker Engine will be preserved.'
+
+    - name: Stop and remove Odoo Compose resources
+      ansible.builtin.command:
+        argv: "{{ ['docker', 'compose', '--project-name', ODOO_COMPOSE_PROJECT, '--file', ODOO_COMPOSE_PATH, 'down', '--remove-orphans'] + (['--volumes'] if remove_volumes_effective else []) }}"
+        chdir: "{{ ODOO_BASE_PATH }}"
+      register: odoo_down
+      changed_when: "'Removed' in odoo_down.stderr or 'Removing' in odoo_down.stderr or 'Stopped' in odoo_down.stderr"
+
+    - name: Stop and remove managed NPM Compose resources
+      ansible.builtin.command:
+        argv: "{{ ['docker', 'compose', '--project-name', 'npm-odoo', '--file', NPM_COMPOSE_PATH, 'down', '--remove-orphans'] + (['--volumes'] if remove_volumes_effective else []) }}"
+        chdir: "{{ NPM_BASE_PATH }}"
+      register: npm_down
+      changed_when: "'Removed' in npm_down.stderr or 'Removing' in npm_down.stderr or 'Stopped' in npm_down.stderr"
+      when: remove_npm_effective
+
+    - name: Remove Odoo image tag if requested
+      ansible.builtin.command:
+        argv: [docker, image, rm, "{{ ODOO_IMAGE_NAME }}:{{ ODOO_IMAGE_VERSION }}"]
+      register: image_rm
+      changed_when: image_rm.rc == 0
+      failed_when: image_rm.rc != 0 and 'No such image' not in (image_rm.stderr | default(''))
+      when: remove_image_effective
+
+    - name: Delete Odoo installation directory if requested
+      ansible.builtin.file:
+        path: "{{ ODOO_BASE_PATH }}"
+        state: absent
+      when: remove_files_effective
+
+    - name: Delete managed NPM installation and bind-mounted data if requested
+      ansible.builtin.file:
+        path: "{{ NPM_BASE_PATH }}"
+        state: absent
+      when: remove_npm_effective and remove_files_effective
+
+    - name: Finish
+      ansible.builtin.debug:
+        msg: 'Uninstallation completed; the shared net network and Docker Engine remain installed.'

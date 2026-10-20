@@ -1,0 +1,10 @@
+---
+# Install only the services (Docker Engine + Compose must already be installed).
+- name: Build Odoo image and deploy Odoo with PostgreSQL
+  ansible.builtin.import_playbook: install-odoo.yml
+
+- name: Deploy Nginx Proxy Manager
+  ansible.builtin.import_playbook: install-nginx-proxy-manager.yml
+
+- name: Configure Odoo Proxy Host in Nginx Proxy Manager
+  ansible.builtin.import_playbook: configure-nginx-proxy-manager.yml

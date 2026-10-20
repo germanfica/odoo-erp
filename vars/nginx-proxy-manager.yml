@@ -1,0 +1,10 @@
+---
+# Public defaults for a separate npm-odoo Compose project.
+# NPM admin (port 81) is exposed on all interfaces by the requested template.
+NPM_BASE_PATH: /opt/npm-odoo
+NPM_VERSION: "2.16.0"
+
+# Optional, idempotent Proxy Host creation via the NPM API.
+# Enable in gitignored vars/site.yml after configuring administrator credentials.
+NPM_PROXY_AUTO_CREATE: false
+NPM_PROXY_DOMAIN: localhost

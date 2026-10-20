@@ -1,0 +1,223 @@
+---
+# Deploy standalone Odoo (including the original remote image build) without Jenkins.
+- name: Validate and prepare Odoo deployment
+  hosts: "{{ TARGET_HOSTS | default('localhost') }}"
+  connection: "{{ TARGET_CONNECTION | default('local') }}"
+  become: "{{ USE_BECOME | default(true) | bool }}"
+  gather_facts: true
+  vars_files:
+    - "{{ playbook_dir }}/../vars/odoo.yml"
+
+  pre_tasks:
+    - name: Load optional, gitignored deployment overrides
+      ansible.builtin.include_vars:
+        file: "{{ playbook_dir }}/../vars/site.yml"
+      when: lookup('ansible.builtin.fileglob', playbook_dir ~ '/../vars/site.yml') | length > 0
+
+    - name: Validate Odoo settings and target system
+      ansible.builtin.assert:
+        that:
+          - ansible_facts['distribution'] in ['Ubuntu', 'Debian']
+          - ansible_facts['architecture'] in ['x86_64', 'amd64', 'aarch64', 'arm64']
+          - ODOO_BASE_PATH is match('^/[^\\s]+$')
+          - ODOO_BASE_PATH not in ['/', '/opt', '/srv', '/mnt']
+          - ODOO_APP_NAME is match('^[a-zA-Z][a-zA-Z0-9_.-]*$')
+          - ODOO_IMAGE_NAME is match('^[a-zA-Z0-9][a-zA-Z0-9/_.-]*$')
+          - ODOO_IMAGE_VERSION is match('^[a-zA-Z0-9][a-zA-Z0-9_.-]*$')
+          - ODOO_POSTGRES_VERSION is match('^[0-9]+$')
+          - ODOO_POSTGRES_USER is match('^[a-zA-Z_][a-zA-Z0-9_]*$')
+          - ODOO_POSTGRES_PASSWORD | length >= 16
+          - "'CHANGE_ME' not in ODOO_POSTGRES_PASSWORD"
+          - ODOO_PROXY_NETWORK == 'net'
+          - ODOO_COMPOSE_PROJECT == 'odoo'
+          - ODOO_APP_NAME != 'odoo-db'
+        fail_msg: >-
+          Invalid Odoo defaults or password. Copy vars/site.yml.example to
+          vars/site.yml and set a strong ODOO_POSTGRES_PASSWORD before deploying.
+
+    - name: Verify Docker Engine is available
+      ansible.builtin.command:
+        argv: [docker, info]
+      changed_when: false
+
+    - name: Verify Docker Compose plugin is available
+      ansible.builtin.command:
+        argv: [docker, compose, version]
+      changed_when: false
+
+  tasks:
+    - name: Record build settings for the unchanged build-odoo-image.yml
+      ansible.builtin.set_fact:
+        APP_IMAGE_NAME: "{{ ODOO_IMAGE_NAME }}"
+        APP_VERSION: "{{ ODOO_IMAGE_VERSION }}"
+        ADDONS_REFRESH: "{{ ODOO_ADDONS_REFRESH }}"
+        ODOO_BUILD_IMAGE_EFFECTIVE: "{{ ODOO_BUILD_IMAGE | bool }}"
+
+# Reuse the current playbook as-is (no changes to build-odoo-image.yml).
+- name: Build Odoo Community image on target
+  ansible.builtin.import_playbook: build-odoo-image.yml
+  vars:
+    TARGET_HOSTS: "{{ ODOO_BUILD_TARGET_HOSTS | default('localhost') }}"
+  when: ODOO_BUILD_IMAGE_EFFECTIVE | default(true) | bool
+
+- name: Deploy Odoo and isolated PostgreSQL
+  hosts: "{{ TARGET_HOSTS | default('localhost') }}"
+  connection: "{{ TARGET_CONNECTION | default('local') }}"
+  become: "{{ USE_BECOME | default(true) | bool }}"
+  gather_facts: false
+  vars_files:
+    - "{{ playbook_dir }}/../vars/odoo.yml"
+  vars:
+    ODOO_COMPOSE_PATH: "{{ ODOO_BASE_PATH }}/docker-compose.yml"
+
+  pre_tasks:
+    - name: Load optional deployment overrides
+      ansible.builtin.include_vars:
+        file: "{{ playbook_dir }}/../vars/site.yml"
+      when: lookup('ansible.builtin.fileglob', playbook_dir ~ '/../vars/site.yml') | length > 0
+
+    - name: Ensure exact Odoo image tag exists on destination
+      ansible.builtin.command:
+        argv: [docker, image, inspect, "{{ ODOO_IMAGE_NAME }}:{{ ODOO_IMAGE_VERSION }}"]
+      changed_when: false
+
+    - name: Inspect existing Odoo application container ownership
+      ansible.builtin.command:
+        argv:
+          - docker
+          - container
+          - inspect
+          - --format
+          - "{{ '{{index .Config.Labels `com.docker.compose.project`}}' }}"
+          - "{{ ODOO_APP_NAME }}"
+      register: odoo_app_owner
+      changed_when: false
+      failed_when: false
+
+    - name: Inspect existing PostgreSQL container ownership
+      ansible.builtin.command:
+        argv:
+          - docker
+          - container
+          - inspect
+          - --format
+          - "{{ '{{index .Config.Labels `com.docker.compose.project`}}' }}"
+          - odoo-db
+      register: odoo_db_owner
+      changed_when: false
+      failed_when: false
+
+    - name: Prevent taking over unrelated Odoo containers
+      ansible.builtin.assert:
+        that:
+          - odoo_app_owner.rc != 0 or (odoo_app_owner.stdout | trim) == ODOO_COMPOSE_PROJECT
+          - odoo_db_owner.rc != 0 or (odoo_db_owner.stdout | trim) == ODOO_COMPOSE_PROJECT
+        fail_msg: 'An existing Odoo container belongs to a different project. Migrate it explicitly.'
+
+  tasks:
+    - name: Inspect shared net network
+      ansible.builtin.command:
+        argv: [docker, network, inspect, "{{ ODOO_PROXY_NETWORK }}", --format, "{{ '{{.Driver}}' }}"]
+      register: odoo_net_inspection
+      changed_when: false
+      failed_when: false
+
+    - name: Create missing shared bridge network
+      ansible.builtin.command:
+        argv: [docker, network, create, --driver, bridge, "{{ ODOO_PROXY_NETWORK }}"]
+      when: odoo_net_inspection.rc != 0
+
+    - name: Refuse non-bridge shared network
+      ansible.builtin.assert:
+        that:
+          - odoo_net_inspection.stdout | trim == 'bridge'
+        fail_msg: 'The existing Docker net network is not a bridge.'
+      when: odoo_net_inspection.rc == 0
+
+    - name: Create persistent Odoo Compose directory
+      ansible.builtin.file:
+        path: "{{ ODOO_BASE_PATH }}"
+        state: directory
+        owner: root
+        group: root
+        mode: '0750'
+
+    - name: Create optional local addon bind-mount directory
+      ansible.builtin.file:
+        path: "{{ ODOO_BASE_PATH }}/addons"
+        state: directory
+        owner: root
+        group: root
+        mode: '0755'
+
+    - name: Render the existing Odoo Compose template
+      ansible.builtin.template:
+        src: "{{ playbook_dir }}/../templates/docker-compose.odoo.yml.j2"
+        dest: "{{ ODOO_COMPOSE_PATH }}"
+        owner: root
+        group: root
+        mode: '0600'
+        backup: true
+      vars:
+        APP_NAME: "{{ ODOO_APP_NAME }}"
+        APP_IMAGE_NAME: "{{ ODOO_IMAGE_NAME }}"
+        APP_VERSION: "{{ ODOO_IMAGE_VERSION }}"
+        POSTGRES_VERSION: "{{ ODOO_POSTGRES_VERSION }}"
+        POSTGRES_USER: "{{ ODOO_POSTGRES_USER }}"
+        POSTGRES_PASSWORD: "{{ ODOO_POSTGRES_PASSWORD }}"
+      no_log: true
+
+    - name: Validate Odoo Compose configuration
+      ansible.builtin.command:
+        argv: [docker, compose, --project-name, "{{ ODOO_COMPOSE_PROJECT }}", --file, "{{ ODOO_COMPOSE_PATH }}", config, --quiet]
+        chdir: "{{ ODOO_BASE_PATH }}"
+      changed_when: false
+      no_log: true
+
+    - name: Start Odoo without dropping existing data volumes
+      ansible.builtin.command:
+        argv:
+          - docker
+          - compose
+          - --project-name
+          - "{{ ODOO_COMPOSE_PROJECT }}"
+          - --file
+          - "{{ ODOO_COMPOSE_PATH }}"
+          - up
+          - --detach
+          - --no-build
+          - --pull
+          - never
+        chdir: "{{ ODOO_BASE_PATH }}"
+      register: odoo_compose_up
+      changed_when: >-
+        'Created' in odoo_compose_up.stderr or
+        'Recreated' in odoo_compose_up.stderr or
+        'Started' in odoo_compose_up.stderr
+      no_log: true
+
+    - name: Confirm PostgreSQL is running
+      ansible.builtin.command:
+        argv: [docker, container, inspect, --format, "{{ '{{.State.Running}}' }}", odoo-db]
+      register: odoo_db_running
+      changed_when: false
+      retries: 20
+      delay: 3
+      until: odoo_db_running.rc == 0 and odoo_db_running.stdout | trim == 'true'
+
+    - name: Confirm Odoo is running
+      ansible.builtin.command:
+        argv: [docker, container, inspect, --format, "{{ '{{.State.Running}}' }}", "{{ ODOO_APP_NAME }}"]
+      register: odoo_running
+      changed_when: false
+      retries: 20
+      delay: 3
+      until: odoo_running.rc == 0 and odoo_running.stdout | trim == 'true'
+
+    - name: Show Odoo NPM proxy settings
+      ansible.builtin.debug:
+        msg:
+          - 'Odoo container running (initial database setup may still be needed).'
+          - 'NPM forward host: {{ ODOO_APP_NAME }}'
+          - 'NPM forward port: 8069'
+          - 'NPM WebSocket advanced location: /websocket -> {{ ODOO_APP_NAME }}:8072'

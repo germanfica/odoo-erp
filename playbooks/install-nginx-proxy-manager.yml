@@ -1,0 +1,141 @@
+---
+# Separate npm-odoo Compose project attached to Odoo's external net bridge.
+# Proxy Hosts are configured separately in configure-nginx-proxy-manager.yml.
+- name: Deploy Nginx Proxy Manager for Odoo
+  hosts: "{{ TARGET_HOSTS | default('localhost') }}"
+  connection: "{{ TARGET_CONNECTION | default('local') }}"
+  become: "{{ USE_BECOME | default(true) | bool }}"
+  gather_facts: true
+
+  vars_files:
+    - "{{ playbook_dir }}/../vars/nginx-proxy-manager.yml"
+
+  vars:
+    NPM_COMPOSE_PATH: "{{ NPM_BASE_PATH }}/docker-compose.yml"
+    NPM_INSTALL_METADATA: "{{ NPM_BASE_PATH }}/.ansible-install.json"
+
+  pre_tasks:
+    - name: Load optional, gitignored deployment overrides
+      ansible.builtin.include_vars:
+        file: "{{ playbook_dir }}/../vars/site.yml"
+      when: lookup('ansible.builtin.fileglob', playbook_dir ~ '/../vars/site.yml') | length > 0
+
+    - name: Validate NPM settings
+      ansible.builtin.assert:
+        that:
+          - ansible_facts['distribution'] in ['Ubuntu', 'Debian']
+          - NPM_BASE_PATH is match('^/[^\\s]+$')
+          - NPM_BASE_PATH not in ['/', '/opt', '/srv', '/mnt']
+          - NPM_BASE_PATH != (ODOO_BASE_PATH | default('/opt/odoo'))
+          - NPM_VERSION is match('^[0-9]+\\.[0-9]+\\.[0-9]+$')
+        fail_msg: 'Invalid NPM settings in vars/nginx-proxy-manager.yml or vars/site.yml.'
+
+    - name: Verify Docker and Compose
+      ansible.builtin.command:
+        argv: [docker, compose, version]
+      changed_when: false
+
+    - name: Require the shared net bridge already created by install-odoo.yml
+      ansible.builtin.command:
+        argv: [docker, network, inspect, net, --format, "{{ '{{.Driver}}' }}"]
+      register: npm_network_inspection
+      changed_when: false
+      failed_when: false
+
+    - name: Assert shared network is a bridge
+      ansible.builtin.assert:
+        that:
+          - npm_network_inspection.rc == 0
+          - npm_network_inspection.stdout | trim == 'bridge'
+        fail_msg: 'Docker network net is missing or not a bridge. Deploy Odoo first.'
+
+    - name: Inspect any existing Compose NPM container
+      ansible.builtin.command:
+        argv:
+          - docker
+          - container
+          - inspect
+          - --format
+          - "{{ '{{index .Config.Labels `com.docker.compose.project`}}' }}"
+          - npm-odoo-app-1
+      register: npm_existing_owner
+      changed_when: false
+      failed_when: false
+
+    - name: Inspect installer's NPM metadata
+      ansible.builtin.stat:
+        path: "{{ NPM_INSTALL_METADATA }}"
+      register: npm_metadata_stat
+
+    - name: Refuse to adopt an unmanaged npm-odoo container
+      ansible.builtin.assert:
+        that:
+          - npm_existing_owner.rc != 0 or ((npm_metadata_stat.stat.isreg | default(false)) and (npm_existing_owner.stdout | trim) == 'npm-odoo')
+        fail_msg: 'npm-odoo-app-1 already exists but is not owned by this deployment.'
+
+  tasks:
+    - name: Create NPM persistent state directories
+      ansible.builtin.file:
+        path: "{{ NPM_BASE_PATH }}/{{ item }}"
+        state: directory
+        owner: root
+        group: root
+        mode: '0750'
+      loop:
+        - ''
+        - data
+        - letsencrypt
+
+    - name: Render the requested NPM Compose template
+      ansible.builtin.template:
+        src: "{{ playbook_dir }}/../templates/docker-compose.npm.yml.j2"
+        dest: "{{ NPM_COMPOSE_PATH }}"
+        owner: root
+        group: root
+        mode: '0640'
+        backup: true
+      vars:
+        APP_VERSION: "{{ NPM_VERSION }}"
+
+    - name: Validate NPM Compose configuration
+      ansible.builtin.command:
+        argv: [docker, compose, --file, "{{ NPM_COMPOSE_PATH }}", config, --quiet]
+        chdir: "{{ NPM_BASE_PATH }}"
+      changed_when: false
+
+    - name: Record NPM deployment marker before Compose up
+      ansible.builtin.copy:
+        dest: "{{ NPM_INSTALL_METADATA }}"
+        owner: root
+        group: root
+        mode: '0640'
+        content: "{{ {'managed_by': 'install-nginx-proxy-manager.yml'} | to_nice_json }}\n"
+
+    - name: Start NPM without deleting persistent state
+      ansible.builtin.command:
+        argv: [docker, compose, --file, "{{ NPM_COMPOSE_PATH }}", up, --detach, --pull, missing]
+        chdir: "{{ NPM_BASE_PATH }}"
+      register: npm_compose_up
+      changed_when: >-
+        'Created' in npm_compose_up.stderr or
+        'Recreated' in npm_compose_up.stderr or
+        'Started' in npm_compose_up.stderr
+
+    - name: Confirm NPM service is running
+      ansible.builtin.command:
+        argv: [docker, compose, --file, "{{ NPM_COMPOSE_PATH }}", ps, --services, --status, running]
+        chdir: "{{ NPM_BASE_PATH }}"
+      register: npm_running_services
+      changed_when: false
+      retries: 20
+      delay: 3
+      until: npm_running_services.rc == 0 and 'app' in npm_running_services.stdout_lines
+
+    - name: Show NPM administration and Odoo upstream
+      ansible.builtin.debug:
+        msg:
+          - 'NPM uses host ports 80, 81 and 443, on all interfaces (as requested).'
+          - 'Secure port 81 with a firewall or change the template before deployment.'
+          - 'NPM interface: http://SERVER_IP:81'
+          - 'Proxy host upstream: http://odoo:8069'
+          - 'Advanced WebSocket proxy: /websocket -> http://odoo:8072'

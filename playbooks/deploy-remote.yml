@@ -1,0 +1,11 @@
+# Example usage (RFC 5737 documentation-only address):
+# ansible-playbook -i '192.0.2.10,' -u username -K playbooks/deploy-remote.yml
+---
+# Docker Engine and its Compose plugin must already exist on the SSH target.
+# Uses the controller checkout; no Jenkins or source checkout on the target required.
+- name: Build and deploy Odoo and NPM remotely
+  ansible.builtin.import_playbook: install-services.yml
+  vars:
+    TARGET_HOSTS: all
+    TARGET_CONNECTION: ssh
+    ODOO_BUILD_TARGET_HOSTS: all

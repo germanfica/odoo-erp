@@ -1,0 +1,18 @@
+---
+# Public defaults for standalone Odoo deployments.
+# Override sensitive and host-specific values in gitignored vars/site.yml.
+ODOO_BASE_PATH: /opt/odoo
+ODOO_APP_NAME: odoo
+ODOO_IMAGE_NAME: odoo-community-argentina
+ODOO_IMAGE_VERSION: "18-local"
+ODOO_BUILD_IMAGE: true
+ODOO_ADDONS_REFRESH: "0"
+
+ODOO_POSTGRES_VERSION: "16"
+ODOO_POSTGRES_USER: odoo
+# Must be provided in vars/site.yml; there is intentionally no default password.
+ODOO_POSTGRES_PASSWORD: ""
+
+# Existing templates/docker-compose.odoo.yml.j2 uses an external Docker network named net.
+ODOO_PROXY_NETWORK: net
+ODOO_COMPOSE_PROJECT: odoo

@@ -1,0 +1,30 @@
+name: npm-odoo
+
+services:
+  app:
+    image: jc21/nginx-proxy-manager:{{ NPM_VERSION }}
+    restart: unless-stopped
+
+    ports:
+      - "80:80"
+      - "81:81"
+      - "443:443"
+
+{% if NPM_ADMIN_AUTO_CREATE | default(false) | bool %}
+    environment:
+      INITIAL_ADMIN_EMAIL: {{ NPM_ADMIN_EMAIL | to_json }}
+      INITIAL_ADMIN_PASSWORD: {{ NPM_ADMIN_PASSWORD | to_json }}
+{% endif %}
+
+    volumes:
+      - ./data:/data
+      - ./letsencrypt:/etc/letsencrypt
+
+    networks:
+      net:
+        aliases:
+          - npm
+
+networks:
+  net:
+    external: true
