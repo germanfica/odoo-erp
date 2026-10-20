@@ -6,7 +6,9 @@ ODOO_APP_NAME: odoo
 ODOO_IMAGE_NAME: odoo-community-argentina
 ODOO_IMAGE_VERSION: "18-local"
 ODOO_BUILD_IMAGE: true
-ODOO_ADDONS_REFRESH: "0"
+# Addon cache refresh: -1 = automatic (new value per build),
+# 0 = fixed default (reuse cache), positive integer = fixed custom value.
+ODOO_ADDONS_REFRESH: "-1"
 
 ODOO_POSTGRES_VERSION: "16"
 ODOO_POSTGRES_USER: odoo

@@ -50,8 +50,14 @@
       ansible.builtin.set_fact:
         APP_IMAGE_NAME: "{{ ODOO_IMAGE_NAME }}"
         APP_VERSION: "{{ ODOO_IMAGE_VERSION }}"
-        ADDONS_REFRESH: "{{ ODOO_ADDONS_REFRESH }}"
         ODOO_BUILD_IMAGE_EFFECTIVE: "{{ ODOO_BUILD_IMAGE | bool }}"
+
+# Resolve cache refresh independently of Jenkins.
+- name: Resolve Odoo addons refresh before build
+  ansible.builtin.import_playbook: refresh-odoo-addons.yml
+  vars:
+    TARGET_HOSTS: "{{ ODOO_BUILD_TARGET_HOSTS | default('localhost') }}"
+  when: ODOO_BUILD_IMAGE_EFFECTIVE | default(true) | bool
 
 # Reuse the current playbook as-is (no changes to build-odoo-image.yml).
 - name: Build Odoo Community image on target
