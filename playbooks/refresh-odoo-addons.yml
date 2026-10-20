@@ -1,0 +1,34 @@
+---
+# Resolve addon cache refresh for standalone local and remote Odoo builds.
+# Jenkins continues to provide ADDONS_REFRESH independently.
+- name: Resolve Odoo addons refresh
+  hosts: "{{ ODOO_BUILD_TARGET_HOSTS | default(TARGET_HOSTS | default('localhost')) }}"
+  connection: "{{ TARGET_CONNECTION | default('local') }}"
+  become: false
+  gather_facts: false
+  vars_files:
+    - "{{ playbook_dir }}/../vars/odoo.yml"
+
+  pre_tasks:
+    - name: Load optional, gitignored deployment overrides
+      ansible.builtin.include_vars:
+        file: "{{ playbook_dir }}/../vars/site.yml"
+      when: lookup('ansible.builtin.fileglob', playbook_dir ~ '/../vars/site.yml') | length > 0
+
+  tasks:
+    - name: Validate addons refresh value
+      ansible.builtin.assert:
+        that:
+          - (ODOO_ADDONS_REFRESH | string) is match('^(-1|0|[1-9][0-9]*)$')
+        fail_msg: 'ODOO_ADDONS_REFRESH must be -1 or a non-negative integer.'
+
+    - name: Resolve addons refresh value
+      ansible.builtin.set_fact:
+        ADDONS_REFRESH: >-
+          {{ now(utc=true, fmt='%Y%m%d%H%M%S%f')
+             if (ODOO_ADDONS_REFRESH | int) == -1
+             else ODOO_ADDONS_REFRESH | string }}
+
+    - name: Show resolved addons refresh value
+      ansible.builtin.debug:
+        msg: "ADDONS_REFRESH={{ ADDONS_REFRESH }}"
